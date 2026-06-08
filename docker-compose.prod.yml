@@ -1,0 +1,116 @@
+# New API - 阿里云 ECS 生产部署配置
+# 使用方式: docker compose up -d
+
+services:
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: new-api
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    environment:
+      # 数据库 - PostgreSQL（生产环境请修改密码）
+      - SQL_DSN=postgresql://newapi:YourStrongPassword123!@postgres:5432/newapi
+      # Redis 缓存
+      - REDIS_CONN_STRING=redis://:YourRedisPassword123!@redis:6379
+      # 时区
+      - TZ=Asia/Shanghai
+      # 错误日志
+      - ERROR_LOG_ENABLED=true
+      # 批量更新（提升性能）
+      - BATCH_UPDATE_ENABLED=true
+      # 内存缓存（减少数据库查询）
+      - MEMORY_CACHE_ENABLED=true
+      # 渠道更新频率（秒）- 更频繁地检测失效 key
+      - CHANNEL_UPDATE_FREQUENCY=30
+      # 同步频率（秒）
+      - SYNC_FREQUENCY=60
+      # 流式超时（秒）- 长对话场景可能需要更大值
+      - STREAMING_TIMEOUT=300
+      # 节点名称
+      - NODE_NAME=aliyun-ecs-node-1
+      # 会话密钥（多节点部署时必须修改为随机字符串）
+      - SESSION_SECRET=change_this_to_a_random_string_in_production
+      # 自动禁用失效渠道（当 key 失效时自动禁用）
+      - AUTOMATIC_DISABLE_CHANNEL_ENABLED=true
+      # 自动启用渠道（定期检查被禁用的渠道是否恢复）
+      - AUTOMATIC_ENABLE_CHANNEL_ENABLED=false
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: ["redis-server", "--requirepass", "YourRedisPassword123!", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "YourRedisPassword123!", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: newapi
+      POSTGRES_PASSWORD: YourStrongPassword123!
+      POSTGRES_DB: newapi
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newapi -d newapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - new-api
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  new-api-network:
+    driver: bridge

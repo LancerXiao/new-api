@@ -1,0 +1,19 @@
+# API Key 池文件
+# 每行一个 API Key，以 # 开头的行为注释
+# 支持多种格式：
+#   - OpenAI: sk-xxxxxxxxxxxx
+#   - Anthropic: sk-ant-xxxxxxxxxxxx
+#   - 自定义: 任意 key 字符串
+#
+# 使用 key-pool-manager.sh 批量导入此文件
+# 示例: ./key-pool-manager.sh add-batch openai
+
+# OpenAI Keys
+# sk-xxxxxxxxxxxx1
+# sk-xxxxxxxxxxxx2
+
+# Anthropic Keys
+# sk-ant-xxxxxxxxxxxx1
+
+# DeepSeek Keys
+# dsk-xxxxxxxxxxxx1
