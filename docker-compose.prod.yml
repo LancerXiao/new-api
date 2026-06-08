@@ -97,6 +97,8 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl:/etc/nginx/ssl
       - ./nginx/logs:/var/log/nginx
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
     depends_on:
       - new-api
     networks:
@@ -107,9 +109,22 @@ services:
       timeout: 5s
       retries: 3
 
+  # Let's Encrypt 证书管理
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+    networks:
+      - new-api-network
+
 volumes:
   pg_data:
   redis_data:
+  certbot-etc:
+  certbot-webroot:
 
 networks:
   new-api-network:
