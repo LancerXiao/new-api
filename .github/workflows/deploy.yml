@@ -1,0 +1,40 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Alibaba Cloud ECS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          script: |
+            cd ${{ secrets.ECS_DEPLOY_PATH }}
+
+            # 拉取最新代码
+            git pull origin main
+
+            # 拉取最新镜像
+            docker compose -f docker-compose.prod.yml pull
+
+            # 滚动更新（先启动新容器再停止旧容器）
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # 清理旧镜像
+            docker image prune -f
+
+            # 检查服务状态
+            docker compose -f docker-compose.prod.yml ps
+
+            echo "Deploy completed at $(date)"

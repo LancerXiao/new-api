@@ -36,3 +36,11 @@ data/
 token_estimator_test.go
 skills-lock.json
 .playwright-mcp
+
+# 部署相关 - 敏感文件
+.env.production
+api-keys.txt
+nginx/ssl/
+nginx/logs/
+ssl-renewal.log
+renew-cert.sh
