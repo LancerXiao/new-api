@@ -102,6 +102,13 @@ MODEL_TIERS = [
     ("google/gemini-2.0-flash-exp:free", 5),
     ("llama-3.3-70b-versatile", 5), ("llama-3.1-8b-instant", 3),
     ("llama-3.3-70b-instruct:free", 3), ("meta-llama/llama-3.3-70b-instruct:free", 3),
+    # ChatAnywhere 模型
+    ("gpt-5.4-mini-ca", 7), ("deepseek-v4-pro", 7),
+    # OpenRouter 免费模型
+    ("moonshotai/kimi-k2.6:free", 5), ("openai/gpt-oss-120b:free", 5),
+    ("qwen/qwen3-coder:free", 5), ("google/gemma-4-31b-it:free", 3),
+    ("nvidia/nemotron-3-ultra-550b-a55b:free", 5),
+    ("nvidia/nemotron-3-super-120b-a12b:free", 3),
 ]
 
 # 统一模型名称映射
@@ -123,6 +130,13 @@ UNIFIED_MODELS = {
         "openrouter/owl-alpha", "smart-chat",
         "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
         "llama-3.3-70b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free",
+        # ChatAnywhere 模型
+        "gpt-5.4-mini-ca",
+        # OpenRouter 免费模型
+        "moonshotai/kimi-k2.6:free", "openai/gpt-oss-120b:free",
+        "qwen/qwen3-coder:free", "google/gemma-4-31b-it:free",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
         "poolside/laguna-xs.2:free", "poolside/laguna-m.1:free",
         "inclusionai/ling-2.6-1t:free",
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
