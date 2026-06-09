@@ -746,6 +746,79 @@ def add_permanent_free_channels(start_id):
     return added
 
 
+# ====== Token 权限管理 ======
+
+# 新注册用户的 Token 限制策略
+TOKEN_EXPIRE_DAYS = 30          # Token 有效期（天）
+TOKEN_MAX_QUOTA = 500000        # 最大额度（约500次对话）
+ADMIN_USER_IDS = [1]            # 管理员用户 ID 列表（不受限制）
+
+
+def enforce_token_limits():
+    """强制执行非管理员用户的 Token 限制：有限额度 + 有效期"""
+    log("检查用户 Token 权限...")
+
+    # 获取所有非管理员的活跃 Token
+    tokens_str = psql_exec(
+        "SELECT id, user_id, name, expired_time, remain_quota, unlimited_quota "
+        "FROM tokens WHERE deleted_at IS NULL AND user_id NOT IN (%s);"
+        % ",".join(str(uid) for uid in ADMIN_USER_IDS)
+    )
+    if not tokens_str:
+        log("  没有需要检查的非管理员 Token")
+        return
+
+    now = int(time.time())
+    expire_at = now + TOKEN_EXPIRE_DAYS * 86400
+    fixed = 0
+
+    for line in tokens_str.split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) < 6:
+            continue
+        tid = parts[0].strip()
+        expired_time = parts[3].strip()
+        remain_quota = parts[4].strip()
+        unlimited = parts[5].strip()
+
+        needs_fix = False
+        updates = []
+
+        # 修复无限额度
+        if unlimited.lower() == "t" or unlimited == "true":
+            updates.append("unlimited_quota=false")
+            needs_fix = True
+
+        # 修复永不过期（expired_time = -1）
+        if expired_time == "-1":
+            updates.append("expired_time=%d" % expire_at)
+            needs_fix = True
+
+        # 修复额度过高
+        try:
+            if int(remain_quota) > TOKEN_MAX_QUOTA and unlimited.lower() != "t":
+                updates.append("remain_quota=%d" % TOKEN_MAX_QUOTA)
+                needs_fix = True
+        except ValueError:
+            pass
+
+        if needs_fix:
+            sql = "UPDATE tokens SET %s WHERE id=%s;" % (", ".join(updates), tid)
+            psql_exec(sql)
+            fixed += 1
+            log("  Token #%s: %s" % (tid, ", ".join(updates)))
+
+    # 同时设置 QuotaForNewUser
+    psql_exec("UPDATE options SET value='%d' WHERE key='QuotaForNewUser';" % TOKEN_MAX_QUOTA)
+
+    if fixed > 0:
+        log("  修复了 %d 个 Token（额度上限=%d, 有效期=%d天）" % (fixed, TOKEN_MAX_QUOTA, TOKEN_EXPIRE_DAYS))
+    else:
+        log("  所有非管理员 Token 权限正常")
+
+
 def main():
     start_time = time.time()
     log("=" * 55)
@@ -815,7 +888,10 @@ def main():
     # 9. Update health data
     update_health_data(health_data, active, dead, health_stats, len(unique_pairs))
 
-    # 10. Verify
+    # 10. Enforce token limits for non-admin users
+    enforce_token_limits()
+
+    # 11. Verify
     ch_count = psql_exec("SELECT COUNT(*) FROM channels WHERE status=1;")
     model_count = psql_exec("SELECT COUNT(DISTINCT model) FROM abilities WHERE enabled=true;")
     unified_count = psql_exec(
