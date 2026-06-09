@@ -71,44 +71,44 @@ EXTRA_KEY_SOURCES = [
 ]
 
 # 模型能力分级（priority 越高越优先选择）
+# 注意：永久免费提供商（ChatAnywhere/Agnes/OpenRouter）优先级高于共享Key
 MODEL_TIERS = [
-    # Tier 1: 顶级模型
-    ("gpt-5.5-pro", 10), ("openai/gpt-5.5-pro", 10),
-    ("gpt-5.5", 10), ("openai/gpt-5.5", 10),
-    ("claude-opus-4-7", 10), ("x-ai/grok-4.3", 10),
-    # Tier 2: 高级模型
-    ("gemini-2.5-flash", 7), ("deepseek/deepseek-v4-pro", 7),
-    ("deepseek-v4-pro", 7), ("qwen/qwen3.6-max-preview", 7),
-    ("qwen3.6-max-preview", 7), ("kimi-k2.5", 7),
-    ("mistralai/mistral-medium-3-5", 7),
-    ("openai/gpt-chat-latest", 7), ("gpt-chat-latest", 7),
-    # Tier 3: 中级模型
-    ("deepseek/deepseek-v4-flash", 5), ("deepseek-v4-flash", 5),
-    ("smart-chat", 5),
-    ("qwen/qwen3.6-35b-a3b", 5), ("qwen/qwen3.6-27b", 5),
-    ("qwen/qwen3.6-flash", 5), ("qwen3.6-flash", 5),
-    ("qwen/qwen3.5-plus-20260420", 5),
-    ("google/gemini-3.1-flash-lite", 5), ("gemini-3.1-flash-lite", 5),
-    ("inclusionai/ring-2.6-1t", 5), ("perceptron/perceptron-mk1", 5),
-    # Tier 4: 入级模型
-    ("ibm-granite/granite-4.1-8b", 3), ("openrouter/owl-alpha", 3),
-    # Tier 5: 免费模型
+    # Tier 1: 永久免费顶级模型（稳定可靠，优先使用）
+    ("gpt-5.4-mini-ca", 10), ("agnes-2.0-flash", 10),
+    # Tier 2: 永久免费高级模型
+    ("deepseek-v4-pro", 10),  # ChatAnywhere
+    # Tier 3: 共享Key顶级模型（额度不稳定）
+    ("gpt-5.5-pro", 3), ("openai/gpt-5.5-pro", 3),
+    ("gpt-5.5", 3), ("openai/gpt-5.5", 3),
+    ("claude-opus-4-7", 3), ("x-ai/grok-4.3", 3),
+    # Tier 4: 共享Key高级模型
+    ("gemini-2.5-flash", 3), ("deepseek/deepseek-v4-pro", 3),
+    ("qwen/qwen3.6-max-preview", 3), ("qwen3.6-max-preview", 3),
+    ("kimi-k2.5", 3), ("mistralai/mistral-medium-3-5", 3),
+    ("openai/gpt-chat-latest", 3), ("gpt-chat-latest", 3),
+    # Tier 5: 共享Key中级模型
+    ("deepseek/deepseek-v4-flash", 3), ("deepseek-v4-flash", 3),
+    ("smart-chat", 3),
+    ("qwen/qwen3.6-35b-a3b", 3), ("qwen/qwen3.6-27b", 3),
+    ("qwen/qwen3.6-flash", 3), ("qwen3.6-flash", 3),
+    ("qwen/qwen3.5-plus-20260420", 3),
+    ("google/gemini-3.1-flash-lite", 3), ("gemini-3.1-flash-lite", 3),
+    ("inclusionai/ring-2.6-1t", 3), ("perceptron/perceptron-mk1", 3),
+    # Tier 6: OpenRouter 免费模型
+    ("moonshotai/kimi-k2.6:free", 5), ("openai/gpt-oss-120b:free", 5),
+    ("qwen/qwen3-coder:free", 5), ("nvidia/nemotron-3-ultra-550b-a55b:free", 5),
+    ("google/gemma-4-31b-it:free", 3), ("nvidia/nemotron-3-super-120b-a12b:free", 3),
+    # Tier 7: 共享Key低级模型
+    ("ibm-granite/granite-4.1-8b", 1), ("openrouter/owl-alpha", 1),
     ("poolside/laguna-xs.2:free", 1), ("poolside/laguna-m.1:free", 1),
     ("inclusionai/ling-2.6-1t:free", 1),
     ("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", 1),
     ("baidu/cobuddy:free", 1),
-    # 永久免费提供商模型
-    ("gemini-2.0-flash", 7), ("gemini-2.0-flash-exp:free", 5),
-    ("google/gemini-2.0-flash-exp:free", 5),
-    ("llama-3.3-70b-versatile", 5), ("llama-3.1-8b-instant", 3),
-    ("llama-3.3-70b-instruct:free", 3), ("meta-llama/llama-3.3-70b-instruct:free", 3),
-    # ChatAnywhere 模型
-    ("gpt-5.4-mini-ca", 7), ("deepseek-v4-pro", 7),
-    # OpenRouter 免费模型
-    ("moonshotai/kimi-k2.6:free", 5), ("openai/gpt-oss-120b:free", 5),
-    ("qwen/qwen3-coder:free", 5), ("google/gemma-4-31b-it:free", 3),
-    ("nvidia/nemotron-3-ultra-550b-a55b:free", 5),
-    ("nvidia/nemotron-3-super-120b-a12b:free", 3),
+    # 其他永久免费提供商模型
+    ("gemini-2.0-flash", 3), ("gemini-2.0-flash-exp:free", 3),
+    ("google/gemini-2.0-flash-exp:free", 3),
+    ("llama-3.3-70b-versatile", 3), ("llama-3.1-8b-instant", 1),
+    ("llama-3.3-70b-instruct:free", 1), ("meta-llama/llama-3.3-70b-instruct:free", 1),
 ]
 
 # 统一模型名称映射
@@ -132,6 +132,8 @@ UNIFIED_MODELS = {
         "llama-3.3-70b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free",
         # ChatAnywhere 模型
         "gpt-5.4-mini-ca",
+        # Agnes AI 模型
+        "agnes-2.0-flash",
         # OpenRouter 免费模型
         "moonshotai/kimi-k2.6:free", "openai/gpt-oss-120b:free",
         "qwen/qwen3-coder:free", "google/gemma-4-31b-it:free",
@@ -352,15 +354,21 @@ def add_channel_with_abilities(key, model, channel_id):
         return False
 
 
-def test_channel_upstream(key, model, timeout=TEST_TIMEOUT):
+def test_channel_upstream(key, model, base_url=None, timeout=TEST_TIMEOUT):
     """测试单个上游渠道是否可用，返回 (ok, error_msg)"""
+    if base_url is None:
+        base_url = BACKEND_BASE_URL
+    # 规范化 base_url：去掉尾部斜杠和 /v1 后缀（后面会统一添加）
+    base_url = base_url.rstrip("/")
+    if base_url.endswith("/v1"):
+        base_url = base_url[:-3]
     is_embedding = "embedding" in model.lower()
 
     if is_embedding:
-        url = "%s/v1/embeddings" % BACKEND_BASE_URL
+        url = "%s/v1/embeddings" % base_url
         payload = json.dumps({"model": model, "input": "test"})
     else:
-        url = "%s/v1/chat/completions" % BACKEND_BASE_URL
+        url = "%s/v1/chat/completions" % base_url
         payload = json.dumps({
             "model": model,
             "messages": [{"role": "user", "content": "Hi"}],
@@ -395,16 +403,22 @@ def test_channel_upstream(key, model, timeout=TEST_TIMEOUT):
         if "choices" in data and len(data.get("choices", [])) > 0:
             return (True, "")
 
-    err_msg = data.get("error", {}).get("message", "no_content")[:100]
+    err_raw = data.get("error", "no_content")
+    if isinstance(err_raw, dict):
+        err_msg = err_raw.get("message", "no_content")[:100]
+    elif isinstance(err_raw, str):
+        err_msg = err_raw[:100]
+    else:
+        err_msg = "no_content"
     return (False, err_msg)
 
 
 def test_single_channel(channel_info):
     """测试单个渠道（用于并行执行），返回 (ch_id, model, ok, error_msg)"""
-    ch_id, ch_key, ch_models = channel_info
+    ch_id, ch_key, ch_models, ch_base_url = channel_info
     model_list = [m.strip() for m in ch_models.split(",")]
     actual_model = model_list[0]
-    ok, err = test_channel_upstream(ch_key, actual_model)
+    ok, err = test_channel_upstream(ch_key, actual_model, base_url=ch_base_url)
     return (ch_id, actual_model, ok, err)
 
 
@@ -412,7 +426,7 @@ def test_and_disable_dead_channels():
     """并行测试所有渠道，禁用不可用的渠道。返回 (active_count, disabled_count, health_stats)"""
     log("开始并行测试渠道可用性 (workers=%d)..." % TEST_WORKERS)
 
-    channels_str = psql_exec("SELECT id, key, models FROM channels WHERE status=1 ORDER BY id;")
+    channels_str = psql_exec("SELECT id, key, models, base_url FROM channels WHERE status=1 ORDER BY id;")
     if not channels_str:
         log("没有活跃渠道需要测试")
         return (0, 0, {})
@@ -423,12 +437,13 @@ def test_and_disable_dead_channels():
         if not line.strip():
             continue
         parts = line.split("|")
-        if len(parts) < 3:
+        if len(parts) < 4:
             continue
         ch_id = parts[0].strip()
         ch_key = parts[1].strip()
         ch_models = parts[2].strip()
-        channel_list.append((ch_id, ch_key, ch_models))
+        ch_base_url = parts[3].strip()
+        channel_list.append((ch_id, ch_key, ch_models, ch_base_url))
 
     # 并行测试
     results = []
@@ -697,11 +712,16 @@ def add_permanent_free_channels(start_id):
         mapping_str = json.dumps(mapping) if mapping else ""
         mapping_sql = mapping_str.replace("'", "''")
 
+        # 规范化 base_url：New API 会自动添加 /v1，所以去掉 /v1 后缀
+        clean_base_url = base_url.rstrip("/")
+        if clean_base_url.endswith("/v1"):
+            clean_base_url = clean_base_url[:-3]
+
         weight = priority
         ok = psql_exec_silent(
             'INSERT INTO channels (id, name, type, key, base_url, models, model_mapping, "group", status, priority, weight, auto_ban, test_time, created_time) '
             "VALUES (%d, '%s', 1, '%s', '%s', '%s', '%s', 'default', 1, %d, %d, 0, 0, %d);" % (
-                ch_id, channel_name, key, base_url, models_str, mapping_sql, priority, weight, ts
+                ch_id, channel_name, key, clean_base_url, models_str, mapping_sql, priority, weight, ts
             )
         )
 
@@ -731,6 +751,9 @@ def main():
 
     # 加载健康数据
     health_data = load_health_data()
+    # 清理旧健康数据中的 consecutive_fails（渠道已重建，旧数据不适用）
+    for model_name in list(health_data.get("channels", {}).keys()):
+        health_data["channels"][model_name]["consecutive_fails"] = 0
 
     # 1. Fetch key-model pairs
     all_pairs = []
