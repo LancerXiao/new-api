@@ -48,6 +48,20 @@ ALERT_LOG = "/var/log/channel-alerts.log"
 TEST_WORKERS = 8  # 并行测试线程数
 TEST_TIMEOUT = 15  # 单个渠道测试超时(秒)
 
+# 永久免费提供商渠道（需要注册获取免费Key，但Key永久有效）
+# 这些是稳定后备渠道，当共享Key全部不可用时保证服务可用性
+# 在 ECS 上配置 /root/permanent-free-keys.json 文件来管理这些Key
+PERMANENT_FREE_CONFIG = "/root/permanent-free-keys.json"
+# 配置文件格式示例:
+# [
+#   {"name": "google-gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+#    "key": "AIza...", "models": ["gemini-2.0-flash"], "priority": 7},
+#   {"name": "groq-llama", "base_url": "https://api.groq.com/openai/v1",
+#    "key": "gsk_...", "models": ["llama-3.3-70b-versatile"], "priority": 5},
+#   {"name": "openrouter-free", "base_url": "https://openrouter.ai/api/v1",
+#    "key": "sk-or-...", "models": ["google/gemini-2.0-flash-exp:free"], "priority": 3}
+# ]
+
 # 模型能力分级（priority 越高越优先选择）
 MODEL_TIERS = [
     # Tier 1: 顶级模型
@@ -75,6 +89,11 @@ MODEL_TIERS = [
     ("inclusionai/ling-2.6-1t:free", 1),
     ("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", 1),
     ("baidu/cobuddy:free", 1),
+    # 永久免费提供商模型
+    ("gemini-2.0-flash", 7), ("gemini-2.0-flash-exp:free", 5),
+    ("google/gemini-2.0-flash-exp:free", 5),
+    ("llama-3.3-70b-versatile", 5), ("llama-3.1-8b-instant", 3),
+    ("llama-3.3-70b-instruct:free", 3), ("meta-llama/llama-3.3-70b-instruct:free", 3),
 ]
 
 # 统一模型名称映射
@@ -82,6 +101,7 @@ UNIFIED_MODELS = {
     "enlyai-chat": [
         "gpt-5.5", "gpt-5.5-pro", "gpt-chat-latest",
         "claude-opus-4-7", "gemini-2.5-flash", "gemini-3.1-flash-lite",
+        "gemini-2.0-flash", "gemini-2.0-flash-exp:free",
         "deepseek-v4-pro", "deepseek-v4-flash",
         "qwen/qwen3.6-max-preview", "qwen/qwen3.6-flash",
         "qwen/qwen3.6-27b", "qwen/qwen3.6-35b-a3b",
@@ -89,9 +109,12 @@ UNIFIED_MODELS = {
         "x-ai/grok-4.3", "openai/gpt-5.5", "openai/gpt-5.5-pro",
         "openai/gpt-chat-latest", "deepseek/deepseek-v4-pro",
         "deepseek/deepseek-v4-flash", "google/gemini-3.1-flash-lite",
+        "google/gemini-2.0-flash-exp:free",
         "inclusionai/ring-2.6-1t", "perceptron/perceptron-mk1",
         "ibm-granite/granite-4.1-8b", "qwen/qwen3.5-plus-20260420",
         "openrouter/owl-alpha", "smart-chat",
+        "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+        "llama-3.3-70b-instruct:free", "meta-llama/llama-3.3-70b-instruct:free",
         "poolside/laguna-xs.2:free", "poolside/laguna-m.1:free",
         "inclusionai/ling-2.6-1t:free",
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
@@ -559,6 +582,124 @@ def update_health_data(health_data, active, disabled, health_stats, total_keys):
     save_health_data(health_data)
 
 
+def ensure_model_pricing():
+    """确保所有模型都有价格配置（New API 要求模型必须有价格才能使用）"""
+    log("更新模型价格配置...")
+
+    # 获取所有当前活跃的模型
+    models_str = psql_exec(
+        "SELECT DISTINCT model FROM abilities WHERE enabled=true;"
+    )
+    if not models_str:
+        return
+
+    models = [m.strip() for m in models_str.split("\n") if m.strip()]
+
+    # 获取当前 ModelRatio 和 CompletionRatio
+    mr_str = psql_exec("SELECT value FROM options WHERE key='ModelRatio';")
+    cr_str = psql_exec("SELECT value FROM options WHERE key='CompletionRatio';")
+
+    try:
+        model_ratio = json.loads(mr_str) if mr_str else {}
+    except:
+        model_ratio = {}
+    try:
+        completion_ratio = json.loads(cr_str) if cr_str else {}
+    except:
+        completion_ratio = {}
+
+    updated = False
+    for model in models:
+        if model not in model_ratio:
+            model_ratio[model] = 0.0001
+            updated = True
+        if model not in completion_ratio:
+            completion_ratio[model] = 0.0001
+            updated = True
+
+    if updated:
+        mr_sql = json.dumps(model_ratio).replace("'", "''")
+        cr_sql = json.dumps(completion_ratio).replace("'", "''")
+        psql_exec_silent(
+            "UPDATE options SET value='%s' WHERE key='ModelRatio';" % mr_sql)
+        psql_exec_silent(
+            "UPDATE options SET value='%s' WHERE key='CompletionRatio';" % cr_sql)
+        log("  更新了 %d 个模型的价格配置" % len(models))
+    else:
+        log("  所有模型价格已配置")
+
+
+def add_permanent_free_channels(start_id):
+    """加载并添加永久免费提供商渠道（从配置文件）"""
+    log("加载永久免费提供商渠道...")
+    try:
+        with open(PERMANENT_FREE_CONFIG, "r") as f:
+            channels = json.load(f)
+    except:
+        log("  未找到配置文件 %s，跳过永久免费渠道" % PERMANENT_FREE_CONFIG)
+        return 0
+
+    if not channels:
+        log("  配置文件为空，跳过永久免费渠道")
+        return 0
+
+    added = 0
+    ch_id = start_id
+    for ch in channels:
+        name = ch.get("name", "permanent-free-%d" % ch_id)
+        base_url = ch.get("base_url", "")
+        key = ch.get("key", "")
+        models = ch.get("models", [])
+        priority = ch.get("priority", 5)
+
+        if not base_url or not key or not models:
+            log("  跳过无效配置: %s" % name)
+            continue
+
+        ts = int(time.time())
+        channel_name = "permanent-%s" % name
+
+        # 为每个模型创建统一模型映射
+        all_models = list(models)  # 实际模型
+        for model in models:
+            unified = get_unified_models_for(model)
+            for u in unified:
+                if u not in all_models:
+                    all_models.append(u)
+
+        models_str = ",".join(all_models)
+        mapping = {}
+        for model in models:
+            for u in get_unified_models_for(model):
+                mapping[u] = model
+        mapping_str = json.dumps(mapping) if mapping else ""
+        mapping_sql = mapping_str.replace("'", "''")
+
+        weight = priority
+        ok = psql_exec_silent(
+            'INSERT INTO channels (id, name, type, key, base_url, models, model_mapping, "group", status, priority, weight, auto_ban, test_time, created_time) '
+            "VALUES (%d, '%s', 1, '%s', '%s', '%s', '%s', 'default', 1, %d, %d, 0, 0, %d);" % (
+                ch_id, channel_name, key, base_url, models_str, mapping_sql, priority, weight, ts
+            )
+        )
+
+        if ok:
+            for m in all_models:
+                psql_exec_silent(
+                    'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
+                    "VALUES ('default', '%s', %d, true, %d, %d);" % (m, ch_id, priority, weight)
+                )
+            log("  永久渠道 #%d: %s (P%d) -> %s" % (ch_id, name, priority, ",".join(models)))
+            added += 1
+        else:
+            log("  永久渠道失败: %s" % name)
+
+        ch_id += 1
+
+    log("  添加了 %d 个永久免费渠道" % added)
+    return added
+
+
 def main():
     start_time = time.time()
     log("=" * 55)
@@ -605,6 +746,13 @@ def main():
 
     # 5. Ensure auto_ban=0
     psql_exec("UPDATE channels SET auto_ban=0;")
+
+    # 5.5 Add permanent free channels (stable fallback)
+    permanent_added = add_permanent_free_channels(next_id)
+    next_id += permanent_added
+
+    # 5.6 Ensure all models have pricing (required by New API)
+    ensure_model_pricing()
 
     # 6. Apply smart routing (based on historical health data)
     apply_smart_routing(health_data)
