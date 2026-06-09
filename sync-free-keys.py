@@ -322,7 +322,8 @@ def add_channel_with_abilities(key, model, channel_id):
     channel_name = "free-key-sync-%d-%d" % (ts, channel_id)
 
     unified = get_unified_models_for(model)
-    models_list = [model] + unified
+    # 只将 enlyai-* 统一模型名放入 models 字段（不暴露上游实际模型名）
+    models_list = list(set(unified))
     models_str = ",".join(models_list)
 
     mapping = {}
@@ -417,9 +418,19 @@ def test_channel_upstream(key, model, base_url=None, timeout=TEST_TIMEOUT):
 
 def test_single_channel(channel_info):
     """测试单个渠道（用于并行执行），返回 (ch_id, model, ok, error_msg)"""
-    ch_id, ch_key, ch_models, ch_base_url = channel_info
-    model_list = [m.strip() for m in ch_models.split(",")]
-    actual_model = model_list[0]
+    ch_id, ch_key, ch_models, ch_base_url, ch_mapping = channel_info
+    # 从 model_mapping 获取实际上游模型名用于测试
+    actual_model = None
+    try:
+        mapping = json.loads(ch_mapping) if ch_mapping else {}
+        # 取第一个映射值作为测试模型
+        if mapping:
+            actual_model = list(mapping.values())[0]
+    except:
+        pass
+    # 回退：如果 mapping 为空，用 models 字段第一个
+    if not actual_model:
+        actual_model = ch_models.split(",")[0].strip()
     ok, err = test_channel_upstream(ch_key, actual_model, base_url=ch_base_url)
     return (ch_id, actual_model, ok, err)
 
@@ -428,7 +439,7 @@ def test_and_disable_dead_channels():
     """并行测试所有渠道，禁用不可用的渠道。返回 (active_count, disabled_count, health_stats)"""
     log("开始并行测试渠道可用性 (workers=%d)..." % TEST_WORKERS)
 
-    channels_str = psql_exec("SELECT id, key, models, base_url FROM channels WHERE status=1 ORDER BY id;")
+    channels_str = psql_exec("SELECT id, key, models, base_url, model_mapping FROM channels WHERE status=1 ORDER BY id;")
     if not channels_str:
         log("没有活跃渠道需要测试")
         return (0, 0, {})
@@ -439,13 +450,14 @@ def test_and_disable_dead_channels():
         if not line.strip():
             continue
         parts = line.split("|")
-        if len(parts) < 4:
+        if len(parts) < 5:
             continue
         ch_id = parts[0].strip()
         ch_key = parts[1].strip()
         ch_models = parts[2].strip()
         ch_base_url = parts[3].strip()
-        channel_list.append((ch_id, ch_key, ch_models, ch_base_url))
+        ch_mapping = parts[4].strip()
+        channel_list.append((ch_id, ch_key, ch_models, ch_base_url, ch_mapping))
 
     # 并行测试
     results = []
@@ -513,7 +525,7 @@ def apply_smart_routing(health_data):
     log("应用智能路由优化...")
 
     channels_str = psql_exec(
-        "SELECT id, models, priority FROM channels WHERE status=1 ORDER BY id;"
+        "SELECT id, models, priority, model_mapping FROM channels WHERE status=1 ORDER BY id;"
     )
     if not channels_str:
         return
@@ -522,14 +534,24 @@ def apply_smart_routing(health_data):
         if not line.strip():
             continue
         parts = line.split("|")
-        if len(parts) < 3:
+        if len(parts) < 4:
             continue
 
         ch_id = parts[0].strip()
         ch_models = parts[1].strip()
         ch_priority = int(parts[2].strip())
+        ch_mapping = parts[3].strip()
 
-        actual_model = ch_models.split(",")[0].strip()
+        # 从 model_mapping 获取实际上游模型名
+        actual_model = None
+        try:
+            mapping = json.loads(ch_mapping) if ch_mapping else {}
+            if mapping:
+                actual_model = list(mapping.values())[0]
+        except:
+            pass
+        if not actual_model:
+            actual_model = ch_models.split(",")[0].strip()
 
         # 检查历史健康数据
         model_health = health_data.get("channels", {}).get(actual_model, {})
@@ -699,14 +721,15 @@ def add_permanent_free_channels(start_id):
         channel_name = "permanent-%s" % name
 
         # 为每个模型创建统一模型映射
-        all_models = list(models)  # 实际模型
+        # 只将 enlyai-* 统一模型名放入 models 字段（不暴露上游实际模型名）
+        unified_models = []
         for model in models:
             unified = get_unified_models_for(model)
             for u in unified:
-                if u not in all_models:
-                    all_models.append(u)
+                if u not in unified_models:
+                    unified_models.append(u)
 
-        models_str = ",".join(all_models)
+        models_str = ",".join(unified_models)
         mapping = {}
         for model in models:
             for u in get_unified_models_for(model):
@@ -729,7 +752,7 @@ def add_permanent_free_channels(start_id):
 
         if ok:
             # 只将 enlyai-* 统一模型添加到 abilities（不暴露上游实际模型名）
-            for m in all_models:
+            for m in unified_models:
                 if m.startswith("enlyai-"):
                     psql_exec_silent(
                         'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
@@ -875,6 +898,10 @@ def main():
 
     # 5.6 Ensure all models have pricing (required by New API)
     ensure_model_pricing()
+
+    # 5.7 Clean up models table: only keep enlyai-* models (hide upstream model names)
+    psql_exec("DELETE FROM models WHERE model_name NOT LIKE 'enlyai-%';")
+    log("清理 models 表：只保留 enlyai-* 模型")
 
     # 6. Apply smart routing (based on historical health data)
     apply_smart_routing(health_data)
