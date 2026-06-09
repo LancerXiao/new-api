@@ -59,8 +59,16 @@ PERMANENT_FREE_CONFIG = "/root/permanent-free-keys.json"
 #   {"name": "groq-llama", "base_url": "https://api.groq.com/openai/v1",
 #    "key": "gsk_...", "models": ["llama-3.3-70b-versatile"], "priority": 5},
 #   {"name": "openrouter-free", "base_url": "https://openrouter.ai/api/v1",
-#    "key": "sk-or-...", "models": ["google/gemini-2.0-flash-exp:free"], "priority": 3}
+#    "key": "sk-or-...", "models": ["google/gemini-2.0-flash-exp:free"], "priority": 3},
+#   {"name": "github-models", "base_url": "https://models.inference.ai.azure.com",
+#    "key": "ghp_...", "models": ["gpt-4o-mini", "Meta-Llama-3.3-70B-Instruct"], "priority": 5}
 # ]
+
+# 额外共享 Key 源（GitHub 仓库，格式与主源相同）
+EXTRA_KEY_SOURCES = [
+    # 如果有其他类似的共享 Key 仓库，可以在这里添加
+    # {"repo": "user/repo", "file": "README.md", "branch": "main"},
+]
 
 # 模型能力分级（priority 越高越优先选择）
 MODEL_TIERS = [
@@ -712,7 +720,7 @@ def main():
 
     # 1. Fetch key-model pairs
     all_pairs = []
-    for source in KEY_SOURCES:
+    for source in KEY_SOURCES + EXTRA_KEY_SOURCES:
         content = fetch_readme(source["repo"], source["file"], source["branch"])
         if content:
             pairs = extract_key_model_pairs(content)
