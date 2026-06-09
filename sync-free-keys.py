@@ -342,11 +342,13 @@ def add_channel_with_abilities(key, model, channel_id):
     )
 
     if ok:
+        # 只将 enlyai-* 统一模型添加到 abilities（不暴露上游实际模型名）
         for m in models_list:
-            psql_exec_silent(
-                'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
-                "VALUES ('default', '%s', %d, true, %d, %d);" % (m, channel_id, priority, weight)
-            )
+            if m.startswith("enlyai-"):
+                psql_exec_silent(
+                    'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
+                    "VALUES ('default', '%s', %d, true, %d, %d);" % (m, channel_id, priority, weight)
+                )
         log("  渠道 #%d: %s (P%d) -> %s" % (channel_id, model, priority, "+".join(unified) if unified else "no-unified"))
         return True
     else:
@@ -726,11 +728,13 @@ def add_permanent_free_channels(start_id):
         )
 
         if ok:
+            # 只将 enlyai-* 统一模型添加到 abilities（不暴露上游实际模型名）
             for m in all_models:
-                psql_exec_silent(
-                    'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
-                    "VALUES ('default', '%s', %d, true, %d, %d);" % (m, ch_id, priority, weight)
-                )
+                if m.startswith("enlyai-"):
+                    psql_exec_silent(
+                        'INSERT INTO abilities ("group", model, channel_id, enabled, priority, weight) '
+                        "VALUES ('default', '%s', %d, true, %d, %d);" % (m, ch_id, priority, weight)
+                    )
             log("  永久渠道 #%d: %s (P%d) -> %s" % (ch_id, name, priority, ",".join(models)))
             added += 1
         else:
