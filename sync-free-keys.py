@@ -62,6 +62,7 @@ MODEL_TIERS = [
     ("openai/gpt-chat-latest", 7), ("gpt-chat-latest", 7),
     # Tier 3: 中级模型
     ("deepseek/deepseek-v4-flash", 5), ("deepseek-v4-flash", 5),
+    ("smart-chat", 5),
     ("qwen/qwen3.6-35b-a3b", 5), ("qwen/qwen3.6-27b", 5),
     ("qwen/qwen3.6-flash", 5), ("qwen3.6-flash", 5),
     ("qwen/qwen3.5-plus-20260420", 5),
