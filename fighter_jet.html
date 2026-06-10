@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afterburner — 战斗机全加力飞行动画</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000}
+canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Afterburner — 高速战斗机全加力飞行动画
+// 纯 Canvas 2D 实现，无任何外部依赖
+// ═══════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// 离屏画布：用于热浪扭曲
+const offCanvas = document.createElement('canvas');
+const offCtx = offCanvas.getContext('2d');
+
+// 离屏画布：用于运动模糊
+const blurCanvas = document.createElement('canvas');
+const blurCtx = blurCanvas.getContext('2d');
+
+let W, H, cx, cy;
+let time = 0;
+let dt = 0;
+let lastTime = 0;
+
+// ─── 参数 ───
+const CFG = {
+  jetScale: 1.0,
+  afterburnerIntensity: 1.0,
+  heatDistortion: 1.0,
+  motionBlur: 1.0,
+  cameraShake: 1.0,
+  contrailOpacity: 1.0,
+  starCount: 600,
+  speedLines: 80,
+};
+
+// ─── 星空 ───
+let stars = [];
+function initStars() {
+  stars = [];
+  for (let i = 0; i < CFG.starCount; i++) {
+    stars.push({
+      x: Math.random() * W * 3 - W,
+      y: Math.random() * H * 2 - H * 0.5,
+      z: Math.random() * 3 + 0.2,
+      brightness: Math.random() * 0.7 + 0.3,
+      size: Math.random() * 1.8 + 0.3,
+      twinkleSpeed: Math.random() * 3 + 1,
+      twinklePhase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+// ─── 速度线 ───
+let speedLines = [];
+function initSpeedLines() {
+  speedLines = [];
+  for (let i = 0; i < CFG.speedLines; i++) {
+    speedLines.push({
+      x: Math.random() * W * 2,
+      y: Math.random() * H,
+      length: Math.random() * 120 + 40,
+      speed: Math.random() * 15 + 8,
+      opacity: Math.random() * 0.15 + 0.03,
+      thickness: Math.random() * 1.2 + 0.3,
+    });
+  }
+}
+
+// ─── 尾迹粒子 ───
+let contrails = [];
+const MAX_CONTRAILS = 600;
+
+// ─── 排焰粒子 ───
+let exhaustParticles = [];
+const MAX_EXHAUST = 400;
+
+// ─── 噪声函数（简化 Perlin） ───
+function noise2D(x, y) {
+  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function smoothNoise(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const n00 = noise2D(ix, iy);
+  const n10 = noise2D(ix + 1, iy);
+  const n01 = noise2D(ix, iy + 1);
+  const n11 = noise2D(ix + 1, iy + 1);
+  return n00 * (1 - sx) * (1 - sy) + n10 * sx * (1 - sy) + n01 * (1 - sx) * sy + n11 * sx * sy;
+}
+
+function fbm(x, y, octaves) {
+  let val = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < octaves; i++) {
+    val += amp * smoothNoise(x * freq, y * freq);
+    amp *= 0.5;
+    freq *= 2.0;
+  }
+  return val;
+}
+
+// ─── 调整画布尺寸 ───
+function resize() {
+  W = canvas.width = offCanvas.width = blurCanvas.width = window.innerWidth;
+  H = canvas.height = offCanvas.height = blurCanvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+  initStars();
+  initSpeedLines();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══════════════════════════════════════════════════════════════
+// 战斗机绘制 — 侧面轮廓，朝右飞行
+// ═══════════════════════════════════════════════════════════════
+
+function drawJet(c, x, y, scale, t) {
+  c.save();
+  c.translate(x, y);
+  c.scale(scale, scale);
+
+  // ─── 机身主体 ───
+  // 机身渐变：深灰金属质感
+  const bodyGrad = c.createLinearGradient(0, -35, 0, 35);
+  bodyGrad.addColorStop(0, '#8a9aaa');
+  bodyGrad.addColorStop(0.15, '#c8d4e0');
+  bodyGrad.addColorStop(0.3, '#e8eef4');
+  bodyGrad.addColorStop(0.45, '#f0f4f8');
+  bodyGrad.addColorStop(0.55, '#d0d8e2');
+  bodyGrad.addColorStop(0.7, '#a0aab8');
+  bodyGrad.addColorStop(0.85, '#707a88');
+  bodyGrad.addColorStop(1, '#4a5462');
+
+  c.fillStyle = bodyGrad;
+  c.beginPath();
+  // 机头（尖锐雷达罩）
+  c.moveTo(180, 0);
+  c.quadraticCurveTo(160, -6, 130, -8);
+  // 座舱盖前缘
+  c.lineTo(95, -10);
+  c.quadraticCurveTo(80, -18, 60, -20);
+  // 座舱盖顶部
+  c.quadraticCurveTo(40, -22, 20, -20);
+  // 机背
+  c.lineTo(-20, -18);
+  c.lineTo(-60, -16);
+  // 垂尾根部
+  c.lineTo(-100, -16);
+  c.lineTo(-130, -14);
+  // 尾部
+  c.lineTo(-150, -10);
+  c.lineTo(-155, -6);
+  c.lineTo(-155, 6);
+  c.lineTo(-150, 10);
+  // 机腹
+  c.lineTo(-130, 14);
+  c.lineTo(-100, 16);
+  c.lineTo(-60, 18);
+  c.lineTo(-20, 20);
+  // 进气口
+  c.lineTo(20, 22);
+  c.quadraticCurveTo(40, 24, 60, 22);
+  c.lineTo(80, 18);
+  // 机头下方
+  c.lineTo(95, 12);
+  c.lineTo(130, 8);
+  c.quadraticCurveTo(160, 6, 180, 0);
+  c.closePath();
+  c.fill();
+
+  // ─── 机身中线高光 ───
+  const highlightGrad = c.createLinearGradient(180, 0, -155, 0);
+  highlightGrad.addColorStop(0, 'rgba(255,255,255,0)');
+  highlightGrad.addColorStop(0.3, 'rgba(255,255,255,0.15)');
+  highlightGrad.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+  highlightGrad.addColorStop(0.7, 'rgba(255,255,255,0.1)');
+  highlightGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = highlightGrad;
+  c.beginPath();
+  c.moveTo(170, -2);
+  c.lineTo(-140, -2);
+  c.lineTo(-140, 2);
+  c.lineTo(170, 2);
+  c.closePath();
+  c.fill();
+
+  // ─── 座舱盖 ───
+  const canopyGrad = c.createLinearGradient(40, -22, 80, -10);
+  canopyGrad.addColorStop(0, 'rgba(120,200,255,0.85)');
+  canopyGrad.addColorStop(0.3, 'rgba(180,230,255,0.9)');
+  canopyGrad.addColorStop(0.5, 'rgba(255,255,255,0.95)');
+  canopyGrad.addColorStop(0.7, 'rgba(140,210,255,0.85)');
+  canopyGrad.addColorStop(1, 'rgba(80,160,220,0.8)');
+  c.fillStyle = canopyGrad;
+  c.beginPath();
+  c.moveTo(95, -10);
+  c.quadraticCurveTo(80, -18, 60, -20);
+  c.quadraticCurveTo(40, -22, 20, -20);
+  c.lineTo(20, -14);
+  c.quadraticCurveTo(40, -14, 60, -13);
+  c.lineTo(80, -12);
+  c.lineTo(95, -10);
+  c.closePath();
+  c.fill();
+
+  // 座舱盖框架线
+  c.strokeStyle = 'rgba(60,80,100,0.6)';
+  c.lineWidth = 0.8;
+  c.beginPath();
+  c.moveTo(95, -10);
+  c.quadraticCurveTo(80, -18, 60, -20);
+  c.quadraticCurveTo(40, -22, 20, -20);
+  c.stroke();
+
+  // ─── 主翼（上翼） ───
+  const wingGrad = c.createLinearGradient(0, -20, 0, -80);
+  wingGrad.addColorStop(0, '#8a96a6');
+  wingGrad.addColorStop(0.3, '#b0bcc8');
+  wingGrad.addColorStop(0.6, '#c8d2dc');
+  wingGrad.addColorStop(1, '#6a7686');
+  c.fillStyle = wingGrad;
+  c.beginPath();
+  c.moveTo(30, -20);
+  c.lineTo(-10, -70);
+  c.lineTo(-50, -78);
+  c.lineTo(-70, -76);
+  c.lineTo(-80, -70);
+  c.lineTo(-60, -18);
+  c.closePath();
+  c.fill();
+
+  // 翼面高光
+  const wingHL = c.createLinearGradient(0, -20, -40, -78);
+  wingHL.addColorStop(0, 'rgba(255,255,255,0.1)');
+  wingHL.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+  wingHL.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = wingHL;
+  c.fill();
+
+  // ─── 主翼（下翼） ───
+  const wingGrad2 = c.createLinearGradient(0, 20, 0, 80);
+  wingGrad2.addColorStop(0, '#7a8696');
+  wingGrad2.addColorStop(0.3, '#a0acb8');
+  wingGrad2.addColorStop(0.6, '#b8c2cc');
+  wingGrad2.addColorStop(1, '#5a6676');
+  c.fillStyle = wingGrad2;
+  c.beginPath();
+  c.moveTo(30, 20);
+  c.lineTo(-10, 70);
+  c.lineTo(-50, 78);
+  c.lineTo(-70, 76);
+  c.lineTo(-80, 70);
+  c.lineTo(-60, 18);
+  c.closePath();
+  c.fill();
+
+  // ─── 垂尾 ───
+  const vtailGrad = c.createLinearGradient(-90, -16, -110, -60);
+  vtailGrad.addColorStop(0, '#8a96a6');
+  vtailGrad.addColorStop(0.5, '#a8b4c0');
+  vtailGrad.addColorStop(1, '#6a7686');
+  c.fillStyle = vtailGrad;
+  c.beginPath();
+  c.moveTo(-90, -16);
+  c.lineTo(-110, -55);
+  c.lineTo(-130, -58);
+  c.lineTo(-140, -52);
+  c.lineTo(-130, -14);
+  c.closePath();
+  c.fill();
+
+  // 垂尾高光
+  c.fillStyle = 'rgba(255,255,255,0.15)';
+  c.beginPath();
+  c.moveTo(-95, -18);
+  c.lineTo(-108, -48);
+  c.lineTo(-120, -50);
+  c.lineTo(-115, -18);
+  c.closePath();
+  c.fill();
+
+  // ─── 进气口 ───
+  c.fillStyle = '#1a2030';
+  c.beginPath();
+  c.ellipse(50, 20, 12, 6, -0.2, 0, Math.PI * 2);
+  c.fill();
+
+  // 进气口内部阴影
+  const intakeGrad = c.createRadialGradient(50, 20, 2, 50, 20, 12);
+  intakeGrad.addColorStop(0, 'rgba(10,15,25,0.9)');
+  intakeGrad.addColorStop(0.7, 'rgba(20,30,50,0.7)');
+  intakeGrad.addColorStop(1, 'rgba(40,50,70,0.3)');
+  c.fillStyle = intakeGrad;
+  c.fill();
+
+  // ─── 发动机尾喷口 ───
+  c.fillStyle = '#0a0e18';
+  c.beginPath();
+  c.ellipse(-155, 0, 5, 10, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // 尾喷口边缘
+  c.strokeStyle = 'rgba(100,120,140,0.6)';
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.ellipse(-155, 0, 6, 11, 0, 0, Math.PI * 2);
+  c.stroke();
+
+  // ─── 机身面板线 ───
+  c.strokeStyle = 'rgba(40,50,65,0.3)';
+  c.lineWidth = 0.5;
+  // 水平面板线
+  c.beginPath();
+  c.moveTo(140, 0);
+  c.lineTo(-140, 0);
+  c.stroke();
+  // 垂直面板线
+  for (let px of [100, 50, 0, -50, -100]) {
+    c.beginPath();
+    c.moveTo(px, -15);
+    c.lineTo(px, 15);
+    c.stroke();
+  }
+
+  // ─── 翼尖灯 ───
+  const blink = Math.sin(t * 4) > 0.3 ? 1 : 0.2;
+  // 左翼红灯
+  c.fillStyle = `rgba(255,30,30,${blink})`;
+  c.shadowColor = 'rgba(255,30,30,0.8)';
+  c.shadowBlur = 8;
+  c.beginPath();
+  c.arc(-70, -76, 2, 0, Math.PI * 2);
+  c.fill();
+  // 右翼绿灯
+  c.fillStyle = `rgba(30,255,30,${blink})`;
+  c.shadowColor = 'rgba(30,255,30,0.8)';
+  c.beginPath();
+  c.arc(-70, 76, 2, 0, Math.PI * 2);
+  c.fill();
+  c.shadowBlur = 0;
+
+  // ─── 环境光反射 ───
+  // 顶部环境光
+  const envGrad = c.createLinearGradient(180, -30, -155, -30);
+  envGrad.addColorStop(0, 'rgba(100,150,220,0.08)');
+  envGrad.addColorStop(0.5, 'rgba(80,120,200,0.05)');
+  envGrad.addColorStop(1, 'rgba(60,80,150,0.12)');
+  c.fillStyle = envGrad;
+  c.beginPath();
+  c.moveTo(180, 0);
+  c.quadraticCurveTo(160, -6, 130, -8);
+  c.lineTo(95, -10);
+  c.quadraticCurveTo(80, -18, 60, -20);
+  c.quadraticCurveTo(40, -22, 20, -20);
+  c.lineTo(-20, -18);
+  c.lineTo(-60, -16);
+  c.lineTo(-100, -16);
+  c.lineTo(-130, -14);
+  c.lineTo(-150, -10);
+  c.lineTo(-155, -6);
+  c.lineTo(-155, 0);
+  c.closePath();
+  c.fill();
+
+  c.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 加力燃烧尾焰
+// ═══════════════════════════════════════════════════════════════
+
+function drawAfterburner(c, x, y, scale, t) {
+  c.save();
+  c.translate(x, y);
+  c.scale(scale, scale);
+
+  const intensity = CFG.afterburnerIntensity;
+  const flicker = 0.85 + 0.15 * Math.sin(t * 47) * Math.sin(t * 31) * Math.sin(t * 73);
+  const flicker2 = 0.9 + 0.1 * Math.sin(t * 59) * Math.cos(t * 37);
+
+  // ─── 最外层：淡蓝/紫色光晕 ───
+  const outerLen = 220 * flicker * intensity;
+  const outerGrad = c.createRadialGradient(-155, 0, 5, -155 - outerLen * 0.5, 0, outerLen);
+  outerGrad.addColorStop(0, 'rgba(80,120,255,0.15)');
+  outerGrad.addColorStop(0.3, 'rgba(60,80,200,0.08)');
+  outerGrad.addColorStop(0.7, 'rgba(40,50,150,0.03)');
+  outerGrad.addColorStop(1, 'rgba(20,20,100,0)');
+  c.fillStyle = outerGrad;
+  c.beginPath();
+  c.ellipse(-155 - outerLen * 0.4, 0, outerLen, 50 * flicker, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // ─── 外焰：蓝白色 ───
+  const outerFlameLen = 160 * flicker * intensity;
+  const outerFlameW = 18 * flicker2;
+  const flameGrad1 = c.createLinearGradient(-155, 0, -155 - outerFlameLen, 0);
+  flameGrad1.addColorStop(0, 'rgba(180,200,255,0.9)');
+  flameGrad1.addColorStop(0.15, 'rgba(100,150,255,0.7)');
+  flameGrad1.addColorStop(0.4, 'rgba(60,100,240,0.4)');
+  flameGrad1.addColorStop(0.7, 'rgba(40,60,200,0.15)');
+  flameGrad1.addColorStop(1, 'rgba(20,30,150,0)');
+  c.fillStyle = flameGrad1;
+  c.beginPath();
+  c.moveTo(-155, -outerFlameW);
+  c.quadraticCurveTo(-155 - outerFlameLen * 0.3, -outerFlameW * 1.1, -155 - outerFlameLen, 0);
+  c.quadraticCurveTo(-155 - outerFlameLen * 0.3, outerFlameW * 1.1, -155, outerFlameW);
+  c.closePath();
+  c.fill();
+
+  // ─── 中焰：蓝白到白 ───
+  const midFlameLen = 110 * flicker2 * intensity;
+  const midFlameW = 12 * flicker;
+  const flameGrad2 = c.createLinearGradient(-155, 0, -155 - midFlameLen, 0);
+  flameGrad2.addColorStop(0, 'rgba(255,255,255,1)');
+  flameGrad2.addColorStop(0.1, 'rgba(220,230,255,0.95)');
+  flameGrad2.addColorStop(0.3, 'rgba(150,180,255,0.7)');
+  flameGrad2.addColorStop(0.6, 'rgba(80,120,255,0.3)');
+  flameGrad2.addColorStop(1, 'rgba(40,60,200,0)');
+  c.fillStyle = flameGrad2;
+  c.beginPath();
+  c.moveTo(-155, -midFlameW);
+  c.quadraticCurveTo(-155 - midFlameLen * 0.4, -midFlameW * 0.8, -155 - midFlameLen, 0);
+  c.quadraticCurveTo(-155 - midFlameLen * 0.4, midFlameW * 0.8, -155, midFlameW);
+  c.closePath();
+  c.fill();
+
+  // ─── 内焰：纯白核心 ───
+  const innerFlameLen = 60 * flicker * intensity;
+  const innerFlameW = 7 * flicker2;
+  const flameGrad3 = c.createLinearGradient(-155, 0, -155 - innerFlameLen, 0);
+  flameGrad3.addColorStop(0, 'rgba(255,255,255,1)');
+  flameGrad3.addColorStop(0.3, 'rgba(255,255,240,0.9)');
+  flameGrad3.addColorStop(0.6, 'rgba(200,220,255,0.5)');
+  flameGrad3.addColorStop(1, 'rgba(150,180,255,0)');
+  c.fillStyle = flameGrad3;
+  c.beginPath();
+  c.moveTo(-155, -innerFlameW);
+  c.quadraticCurveTo(-155 - innerFlameLen * 0.5, -innerFlameW * 0.6, -155 - innerFlameLen, 0);
+  c.quadraticCurveTo(-155 - innerFlameLen * 0.5, innerFlameW * 0.6, -155, innerFlameW);
+  c.closePath();
+  c.fill();
+
+  // ─── 马赫环（激波钻石） ───
+  for (let i = 0; i < 4; i++) {
+    const dist = 20 + i * 28;
+    const ringX = -155 - dist * flicker;
+    const ringW = (10 - i * 1.5) * flicker2;
+    const ringH = (7 - i) * flicker;
+    const ringAlpha = (0.6 - i * 0.12) * intensity;
+    if (ringAlpha <= 0) continue;
+
+    c.fillStyle = `rgba(200,220,255,${ringAlpha})`;
+    c.beginPath();
+    c.ellipse(ringX, 0, ringW * 0.3, ringH, 0, 0, Math.PI * 2);
+    c.fill();
+
+    // 马赫环亮边
+    c.strokeStyle = `rgba(255,255,255,${ringAlpha * 0.5})`;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.ellipse(ringX, 0, ringW * 0.5, ringH * 1.2, 0, 0, Math.PI * 2);
+    c.stroke();
+  }
+
+  // ─── 尾焰发光（全局光晕） ───
+  c.globalCompositeOperation = 'screen';
+  const glowGrad = c.createRadialGradient(-155, 0, 3, -155, 0, 100 * intensity);
+  glowGrad.addColorStop(0, `rgba(100,150,255,${0.4 * flicker})`);
+  glowGrad.addColorStop(0.3, `rgba(60,100,220,${0.2 * flicker})`);
+  glowGrad.addColorStop(0.6, `rgba(30,50,150,${0.08 * flicker})`);
+  glowGrad.addColorStop(1, 'rgba(10,20,80,0)');
+  c.fillStyle = glowGrad;
+  c.fillRect(-300, -120, 300, 240);
+  c.globalCompositeOperation = 'source-over';
+
+  c.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 热浪扭曲效果
+// ═══════════════════════════════════════════════════════════════
+
+function applyHeatDistortion(c, t) {
+  const strength = CFG.heatDistortion;
+  if (strength <= 0) return;
+
+  // 将当前画面复制到离屏画布
+  offCtx.drawImage(canvas, 0, 0);
+
+  // 在发动机后方区域进行扭曲
+  const jetX = cx + 10;
+  const jetY = cy;
+  const regionX = jetX - 220 * CFG.jetScale;
+  const regionY = jetY - 80 * CFG.jetScale;
+  const regionW = 250 * CFG.jetScale;
+  const regionH = 160 * CFG.jetScale;
+
+  // 使用条带位移模拟热浪
+  const stripH = 3;
+  for (let sy = regionY; sy < regionY + regionH; sy += stripH) {
+    const noiseVal = fbm(sy * 0.02 + t * 2, t * 1.5, 3);
+    const dx = (noiseVal - 0.5) * 12 * strength;
+    const dy = (fbm(sy * 0.03 + t * 3, t * 2, 2) - 0.5) * 4 * strength;
+
+    c.drawImage(
+      offCanvas,
+      regionX + dx, sy + dy, regionW, stripH,
+      regionX, sy, regionW, stripH
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 运动模糊
+// ═══════════════════════════════════════════════════════════════
+
+function drawMotionBlur(c, x, y, scale, t) {
+  const blurAmount = CFG.motionBlur;
+  if (blurAmount <= 0) return;
+
+  const copies = 8;
+  for (let i = 1; i <= copies; i++) {
+    const alpha = 0.04 * blurAmount * (1 - i / copies);
+    const offsetX = i * 8 * blurAmount;
+    c.globalAlpha = alpha;
+    drawJet(c, x + offsetX, y, scale, t);
+  }
+  c.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 尾迹（Contrails）
+// ═══════════════════════════════════════════════════════════════
+
+function updateContrails(jetX, jetY, scale, t) {
+  // 从翼尖产生尾迹
+  const wingTipOffsets = [
+    { x: -70 * scale, y: -76 * scale },
+    { x: -70 * scale, y: 76 * scale },
+  ];
+
+  for (const off of wingTipOffsets) {
+    if (contrails.length < MAX_CONTRAILS) {
+      contrails.push({
+        x: jetX + off.x + (Math.random() - 0.5) * 3,
+        y: jetY + off.y + (Math.random() - 0.5) * 3,
+        vx: -(Math.random() * 2 + 1),
+        vy: (Math.random() - 0.5) * 0.5,
+        life: 1,
+        maxLife: 1,
+        decay: 0.003 + Math.random() * 0.004,
+        size: Math.random() * 3 + 2,
+      });
+    }
+  }
+
+  // 更新
+  for (let i = contrails.length - 1; i >= 0; i--) {
+    const p = contrails[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+    p.size += 0.15;
+    p.vx *= 0.99;
+    p.vy *= 0.98;
+    if (p.life <= 0) contrails.splice(i, 1);
+  }
+}
+
+function drawContrails(c) {
+  const opacity = CFG.contrailOpacity;
+  if (opacity <= 0) return;
+
+  for (const p of contrails) {
+    const a = p.life * 0.35 * opacity;
+    c.fillStyle = `rgba(200,210,230,${a})`;
+    c.beginPath();
+    c.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 排焰粒子
+// ═══════════════════════════════════════════════════════════════
+
+function updateExhaustParticles(jetX, jetY, scale, t) {
+  const nozzleX = jetX - 155 * scale;
+  const nozzleY = jetY;
+
+  for (let i = 0; i < 3; i++) {
+    if (exhaustParticles.length < MAX_EXHAUST) {
+      const angle = (Math.random() - 0.5) * 0.6;
+      const speed = Math.random() * 6 + 4;
+      exhaustParticles.push({
+        x: nozzleX + (Math.random() - 0.5) * 6 * scale,
+        y: nozzleY + (Math.random() - 0.5) * 10 * scale,
+        vx: -Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.5,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.02,
+        size: Math.random() * 2.5 + 1,
+        type: Math.random(),
+      });
+    }
+  }
+
+  for (let i = exhaustParticles.length - 1; i >= 0; i--) {
+    const p = exhaustParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+    p.size *= 0.98;
+    p.vx *= 0.97;
+    p.vy *= 0.96;
+    if (p.life <= 0) exhaustParticles.splice(i, 1);
+  }
+}
+
+function drawExhaustParticles(c) {
+  for (const p of exhaustParticles) {
+    const a = p.life * 0.8;
+    let r, g, b;
+    if (p.type < 0.3) {
+      // 白/蓝核心
+      r = 200 + 55 * p.life;
+      g = 210 + 45 * p.life;
+      b = 255;
+    } else if (p.type < 0.7) {
+      // 蓝色
+      r = 80 + 80 * p.life;
+      g = 120 + 80 * p.life;
+      b = 255;
+    } else {
+      // 橙色边缘
+      r = 255;
+      g = 150 + 100 * p.life;
+      b = 80 * p.life;
+    }
+    c.fillStyle = `rgba(${r|0},${g|0},${b|0},${a})`;
+    c.beginPath();
+    c.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 星空背景
+// ═══════════════════════════════════════════════════════════════
+
+function drawStars(c, t) {
+  for (const s of stars) {
+    // 视差滚动
+    const parallax = s.z * 2;
+    s.x -= parallax;
+    if (s.x < -W) s.x += W * 3;
+
+    const sx = s.x;
+    const sy = s.y;
+    if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+
+    const twinkle = 0.7 + 0.3 * Math.sin(t * s.twinkleSpeed + s.twinklePhase);
+    const alpha = s.brightness * twinkle;
+
+    // 星光拉丝（运动模糊效果）
+    const streakLen = s.z * 3 * parallax * 0.5;
+    if (streakLen > 1) {
+      const grad = c.createLinearGradient(sx, sy, sx + streakLen, sy);
+      grad.addColorStop(0, `rgba(200,210,240,${alpha})`);
+      grad.addColorStop(1, `rgba(200,210,240,0)`);
+      c.strokeStyle = grad;
+      c.lineWidth = s.size * 0.6;
+      c.beginPath();
+      c.moveTo(sx, sy);
+      c.lineTo(sx + streakLen, sy);
+      c.stroke();
+    }
+
+    // 星点
+    c.fillStyle = `rgba(220,230,255,${alpha})`;
+    c.beginPath();
+    c.arc(sx, sy, s.size * 0.5, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 速度线
+// ═══════════════════════════════════════════════════════════════
+
+function drawSpeedLines(c, t) {
+  for (const l of speedLines) {
+    l.x -= l.speed;
+    if (l.x + l.length < 0) {
+      l.x = W + Math.random() * 200;
+      l.y = Math.random() * H;
+    }
+
+    const grad = c.createLinearGradient(l.x, l.y, l.x + l.length, l.y);
+    grad.addColorStop(0, `rgba(150,170,210,${l.opacity})`);
+    grad.addColorStop(0.5, `rgba(180,200,240,${l.opacity * 1.5})`);
+    grad.addColorStop(1, `rgba(150,170,210,0)`);
+    c.strokeStyle = grad;
+    c.lineWidth = l.thickness;
+    c.beginPath();
+    c.moveTo(l.x, l.y);
+    c.lineTo(l.x + l.length, l.y);
+    c.stroke();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 景深效果（前后景模糊）
+// ═══════════════════════════════════════════════════════════════
+
+function drawDepthOfField(c) {
+  // 前景虚化光斑
+  c.save();
+  for (let i = 0; i < 5; i++) {
+    const bx = Math.random() * W;
+    const by = Math.random() * H;
+    const br = Math.random() * 40 + 20;
+    const ba = Math.random() * 0.03 + 0.01;
+    const grad = c.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, `rgba(100,130,200,${ba})`);
+    grad.addColorStop(0.5, `rgba(80,110,180,${ba * 0.5})`);
+    grad.addColorStop(1, 'rgba(60,80,150,0)');
+    c.fillStyle = grad;
+    c.beginPath();
+    c.arc(bx, by, br, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.restore();
+
+  // 上下边缘暗角（增强压迫感）
+  const vigTop = c.createLinearGradient(0, 0, 0, H * 0.25);
+  vigTop.addColorStop(0, 'rgba(0,0,0,0.5)');
+  vigTop.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = vigTop;
+  c.fillRect(0, 0, W, H * 0.25);
+
+  const vigBot = c.createLinearGradient(0, H * 0.75, 0, H);
+  vigBot.addColorStop(0, 'rgba(0,0,0,0)');
+  vigBot.addColorStop(1, 'rgba(0,0,0,0.5)');
+  c.fillStyle = vigBot;
+  c.fillRect(0, H * 0.75, W, H * 0.25);
+
+  // 左右暗角
+  const vigLeft = c.createLinearGradient(0, 0, W * 0.15, 0);
+  vigLeft.addColorStop(0, 'rgba(0,0,0,0.4)');
+  vigLeft.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = vigLeft;
+  c.fillRect(0, 0, W * 0.15, H);
+
+  const vigRight = c.createLinearGradient(W * 0.85, 0, W, 0);
+  vigRight.addColorStop(0, 'rgba(0,0,0,0)');
+  vigRight.addColorStop(1, 'rgba(0,0,0,0.4)');
+  c.fillStyle = vigRight;
+  c.fillRect(W * 0.85, 0, W * 0.15, H);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 镜头抖动
+// ═══════════════════════════════════════════════════════════════
+
+function getCameraShake(t) {
+  const s = CFG.cameraShake;
+  if (s <= 0) return { x: 0, y: 0, r: 0 };
+  // 多频率叠加模拟真实抖动
+  const sx = (
+    Math.sin(t * 23) * 1.2 +
+    Math.sin(t * 47) * 0.6 +
+    Math.sin(t * 97) * 0.3 +
+    Math.sin(t * 157) * 0.15
+  ) * s;
+  const sy = (
+    Math.sin(t * 31) * 0.8 +
+    Math.sin(t * 67) * 0.4 +
+    Math.sin(t * 113) * 0.2 +
+    Math.sin(t * 173) * 0.1
+  ) * s;
+  const sr = (
+    Math.sin(t * 19) * 0.15 +
+    Math.sin(t * 43) * 0.08
+  ) * s;
+  return { x: sx, y: sy, r: sr };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 环境光照
+// ═══════════════════════════════════════════════════════════════
+
+function drawAmbientLight(c, jetX, jetY, t) {
+  // 尾焰照亮机身后方
+  c.globalCompositeOperation = 'screen';
+  const ambGrad = c.createRadialGradient(
+    jetX - 155 * CFG.jetScale, jetY, 10,
+    jetX - 155 * CFG.jetScale, jetY, 200 * CFG.jetScale
+  );
+  const flicker = 0.7 + 0.3 * Math.sin(t * 37) * Math.sin(t * 53);
+  ambGrad.addColorStop(0, `rgba(60,90,180,${0.12 * flicker})`);
+  ambGrad.addColorStop(0.3, `rgba(40,60,140,${0.06 * flicker})`);
+  ambGrad.addColorStop(0.7, `rgba(20,30,80,${0.02 * flicker})`);
+  ambGrad.addColorStop(1, 'rgba(10,15,40,0)');
+  c.fillStyle = ambGrad;
+  c.fillRect(0, 0, W, H);
+
+  // 机头前方微弱环境光
+  const headGrad = c.createRadialGradient(
+    jetX + 180 * CFG.jetScale, jetY, 5,
+    jetX + 180 * CFG.jetScale, jetY, 80 * CFG.jetScale
+  );
+  headGrad.addColorStop(0, `rgba(80,100,150,${0.05 * flicker})`);
+  headGrad.addColorStop(1, 'rgba(40,50,80,0)');
+  c.fillStyle = headGrad;
+  c.fillRect(0, 0, W, H);
+
+  c.globalCompositeOperation = 'source-over';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 主渲染循环
+// ═══════════════════════════════════════════════════════════════
+
+function render(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  time += dt;
+
+  const scale = CFG.jetScale * Math.min(W / 1200, H / 800) * 1.2;
+  const jetX = cx + 10;
+  const jetY = cy;
+
+  // 镜头抖动
+  const shake = getCameraShake(time);
+
+  // 清空
+  ctx.fillStyle = '#000005';
+  ctx.fillRect(0, 0, W, H);
+
+  // 应用镜头变换
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+  ctx.rotate(shake.r * Math.PI / 180);
+
+  // ─── 背景层 ───
+  drawStars(ctx, time);
+  drawSpeedLines(ctx, time);
+
+  // ─── 尾迹层 ───
+  updateContrails(jetX, jetY, scale, time);
+  drawContrails(ctx);
+
+  // ─── 排焰粒子 ───
+  updateExhaustParticles(jetX, jetY, scale, time);
+  drawExhaustParticles(ctx);
+
+  // ─── 运动模糊（战机残影） ───
+  drawMotionBlur(ctx, jetX, jetY, scale, time);
+
+  // ─── 加力燃烧尾焰 ───
+  drawAfterburner(ctx, jetX, jetY, scale, time);
+
+  // ─── 战斗机主体 ───
+  drawJet(ctx, jetX, jetY, scale, time);
+
+  // ─── 环境光照 ───
+  drawAmbientLight(ctx, jetX, jetY, time);
+
+  ctx.restore();
+
+  // ─── 热浪扭曲（后处理） ───
+  applyHeatDistortion(ctx, time);
+
+  // ─── 景深与暗角 ───
+  drawDepthOfField(ctx);
+
+  // ─── 画面整体色调 ───
+  ctx.globalCompositeOperation = 'overlay';
+  const tintGrad = ctx.createLinearGradient(0, 0, W, H);
+  tintGrad.addColorStop(0, 'rgba(10,15,40,0.08)');
+  tintGrad.addColorStop(0.5, 'rgba(20,25,50,0.05)');
+  tintGrad.addColorStop(1, 'rgba(5,10,30,0.1)');
+  ctx.fillStyle = tintGrad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'source-over';
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
