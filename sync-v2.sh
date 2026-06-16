@@ -1,58 +1,31 @@
 #!/bin/bash
-# ============================================
-# 自动从 GitHub 免费 API Key 仓库抓取 Key
-# 通过 SQL 直接导入 New API 数据库
-# 支持按 Key-Model 对精确配置渠道
-# ============================================
-#
-# 使用方式:
-#   chmod +x sync-free-keys.sh
-#   ./sync-free-keys.sh
-#
-# 定时同步（crontab -e）:
-#   */30 * * * * /root/sync-free-keys.sh >> /var/log/sync-free-keys.log 2>&1
+# 自动从 GitHub 免费 API Key 仓库抓取 Key 并导入 New API
+# 每30分钟由 crontab 执行
 
 set -e
 
-# ============ 配置 ============
-# 免费 Key 仓库列表
 KEY_SOURCES=(
     "https://raw.githubusercontent.com/alistaitsacle/free-llm-api-keys/main/README.md"
 )
-
-# 后端 Base URL（这些 Key 共用的上游 API）
 BACKEND_BASE_URL="https://aiapiv2.pekpik.com"
-
-# 默认模型列表（当无法从 README 提取模型时使用）
-DEFAULT_MODELS="gpt-4o,gpt-4o-mini,gpt-3.5-turbo,claude-3-haiku,deepseek-chat,smart-chat"
-
-# PostgreSQL 连接信息
 PSQL_CMD="docker exec postgres psql -U newapi -d newapi -t -A"
-
-# 日志文件
 LOG="/var/log/sync-free-keys.log"
 
-# ============ 配置结束 ============
-
-timestamp() { date '+%Y-%m-%d %H:%M:%S'; }
+timestamp() { date "+%Y-%m-%d %H:%M:%S"; }
 log() { echo "[$(timestamp)] $1"; }
 
-# 从 GitHub 仓库抓取 Key-Model 对
 fetch_key_model_pairs() {
     local url=$1
     log "从 $url 抓取 Key-Model 对..."
-
     local content=$(curl -sL --connect-timeout 15 --max-time 30 "$url" 2>/dev/null)
-
     if [ -z "$content" ]; then
         log "无法获取内容: $url"
         return
     fi
-
     # 从 Markdown 表格提取 Key 和对应的 Model
     # 格式: | `sk-xxx` | model-name | ... |
-    echo "$content" | grep -oE '\| `sk-[a-zA-Z0-9_-]+` \| [a-zA-Z0-9_/.:-]+ \|' | while read line; do
-        local key=$(echo "$line" | grep -oE 'sk-[a-zA-Z0-9_-]+' | head -1)
+    echo "$content" | grep -oP '\| `sk-[a-zA-Z0-9_-]+` \| [a-zA-Z0-9_/.:-]+ \|' | while read line; do
+        local key=$(echo "$line" | grep -oP 'sk-[a-zA-Z0-9_-]+' | head -1)
         local model=$(echo "$line" | awk -F'|' '{print $3}' | sed 's/[` ]//g' | head -1)
         if [ -n "$key" ] && [ -n "$model" ]; then
             echo "${key}|${model}"
@@ -60,18 +33,13 @@ fetch_key_model_pairs() {
     done
 }
 
-# 获取现有渠道中的 Key 列表
-get_existing_keys() {
-    $PSQL_CMD -c "SELECT key FROM channels WHERE name LIKE 'free-key-sync-%';" 2>/dev/null | tr -d ' '
+cleanup_old_sync_channels() {
+    log "清理旧的同步渠道..."
+    $PSQL_CMD -c "DELETE FROM channels WHERE name LIKE 'free-key-sync-%';" 2>/dev/null
+    $PSQL_CMD -c "DELETE FROM abilities WHERE channel_id NOT IN (SELECT id FROM channels);" 2>/dev/null
+    log "清理完成"
 }
 
-# 获取下一个可用的 channel ID
-get_next_channel_id() {
-    local max_id=$($PSQL_CMD -c "SELECT COALESCE(MAX(id), 0) FROM channels;" 2>/dev/null)
-    echo $((max_id + 1))
-}
-
-# 添加渠道和对应的 abilities 记录
 add_channel_with_abilities() {
     local key=$1
     local model=$2
@@ -79,38 +47,23 @@ add_channel_with_abilities() {
     local ts=$(date +%s)
     local channel_name="free-key-sync-${ts}-${channel_id}"
 
-    # 插入渠道
     $PSQL_CMD -c "INSERT INTO channels (id, name, type, key, base_url, models, \"group\", status, priority, weight, auto_ban, test_time, created_time)
         VALUES ($channel_id, '$channel_name', 1, '$key', '$BACKEND_BASE_URL', '$model', 'default', 1, 3, 3, 0, 0, $ts);" 2>/dev/null
 
     if [ $? -eq 0 ]; then
-        # 插入 abilities 记录
         $PSQL_CMD -c "INSERT INTO abilities (\"group\", model, channel_id, enabled, priority, weight)
             VALUES ('default', '$model', $channel_id, true, 3, 3);" 2>/dev/null
-        log "  添加渠道 #${channel_id}: ${channel_name} (model: $model)"
+        log "  添加渠道 #${channel_id}: model=$model"
         return 0
     else
-        log "  添加渠道失败: ${channel_name}"
+        log "  添加渠道失败: $channel_name"
         return 1
     fi
 }
 
-# 清理旧的同步渠道
-cleanup_old_sync_channels() {
-    log "清理旧的同步渠道..."
-    # 删除所有 free-key-sync- 开头的渠道
-    local deleted=$($PSQL_CMD -c "DELETE FROM channels WHERE name LIKE 'free-key-sync-%';" 2>/dev/null)
-    log "  删除了 ${deleted} 个旧渠道"
-
-    # 清理孤立的 abilities 记录
-    $PSQL_CMD -c "DELETE FROM abilities WHERE channel_id NOT IN (SELECT id FROM channels);" 2>/dev/null
-}
-
-# 更新模型广场（abilities 表）- 确保所有渠道的模型都有 abilities 记录
 update_abilities_for_all_channels() {
     log "更新 abilities 表..."
-
-    # 为所有启用的渠道插入 abilities 记录（如果不存在）
+    # 为所有启用的渠道（非 free-key-sync）插入 abilities 记录
     $PSQL_CMD -c "
         INSERT INTO abilities (\"group\", model, channel_id, enabled, priority, weight)
         SELECT 'default', unnest(string_to_array(models, ',')), id, true, 3, 3
@@ -120,18 +73,16 @@ update_abilities_for_all_channels() {
         ON CONFLICT DO NOTHING;" 2>/dev/null
 }
 
-# 主流程
 main() {
     log "=========================================="
     log "开始同步免费 API Key"
     log "=========================================="
 
-    # 1. 从所有源抓取 Key-Model 对
     all_pairs=""
     for source in "${KEY_SOURCES[@]}"; do
         pairs=$(fetch_key_model_pairs "$source")
         if [ -n "$pairs" ]; then
-            all_pairs="${all_pairs}${pairs}\n"
+            all_pairs="${all_pairs}${pairs}"$'\n'
         fi
     done
 
@@ -140,32 +91,24 @@ main() {
         exit 0
     fi
 
-    # 2. 去重
-    unique_pairs=$(echo -e "$all_pairs" | sort -u -t'|' -k1,1 | grep -v '^$')
+    unique_pairs=$(echo "$all_pairs" | sort -u -t'|' -k1,1 | grep -v '^$')
     total=$(echo "$unique_pairs" | wc -l)
     log "共 ${total} 个唯一 Key-Model 对"
 
-    # 3. 清理旧的同步渠道
     cleanup_old_sync_channels
 
-    # 4. 获取下一个 channel ID
-    next_id=$(get_next_channel_id)
+    next_id=$($PSQL_CMD -c "SELECT COALESCE(MAX(id), 0) + 1 FROM channels;" 2>/dev/null)
     added=0
 
-    # 5. 添加新渠道
     while IFS='|' read -r key model; do
         [ -z "$key" ] && continue
-
         if add_channel_with_abilities "$key" "$model" "$next_id"; then
             added=$((added + 1))
         fi
         next_id=$((next_id + 1))
     done <<< "$unique_pairs"
 
-    # 6. 更新 abilities 表
     update_abilities_for_all_channels
-
-    # 7. 确保所有渠道 auto_ban=0
     $PSQL_CMD -c "UPDATE channels SET auto_ban=0;" 2>/dev/null
 
     log "同步完成: 新增 ${added} 个渠道"
