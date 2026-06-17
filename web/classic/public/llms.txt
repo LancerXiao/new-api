@@ -1,0 +1,73 @@
+# [enlyai](https://www.enlyai.com)
+
+> enlyai is a unified LLM API gateway that provides developers with access to 100+ large language models through a single OpenAI-compatible API endpoint. Built for developers in China and worldwide, it offers direct access without VPN, Alipay/WeChat payment support, and open-source self-hosting capability.
+
+## What enlyai does
+
+enlyai aggregates LLM APIs from OpenAI, Anthropic, Google, DeepSeek, and 50+ other providers into one unified interface. Developers use one API key to access all models, with automatic failover, load balancing, and consolidated billing. The platform is based on the open-source New API project, enabling private deployment for enterprises with data compliance requirements.
+
+## Key features
+
+- **Unified API**: One OpenAI-compatible endpoint (`/v1/chat/completions`) for all LLM providers — switch models by changing only the `model` parameter
+- **Smart Routing & Failover**: Automatic failover and load balancing across providers to ensure high availability
+- **Cost Optimization**: Transparent pricing with no markup on provider prices; real-time usage monitoring and cost tracking dashboard
+- **Multi-modal Support**: Text chat, image generation, audio transcription, video generation, embeddings, and reranking
+- **China-friendly**: Direct access without VPN; Alipay and WeChat payment support; Chinese-language dashboard
+- **Open Source**: Based on the New API open-source project; supports private/self-hosted deployment for data compliance
+- **Developer Tools**: Compatible with Cursor, Cherry Studio, Claude Code, ChatBox, NextChat, Dify, and other AI tools
+- **Check-in Rewards**: Daily check-in for free quota; invitation rewards for both inviter and invitee
+- **Subscription Plans**: Flexible pay-per-use and subscription billing options
+
+## Supported providers
+
+OpenAI (GPT-4o, GPT-5, o3, DALL-E), Anthropic (Claude Opus 4, Claude Sonnet 4), Google (Gemini 2.5 Pro, Gemini 3), DeepSeek (DeepSeek-V3, DeepSeek-R1), Mistral AI, xAI (Grok), Alibaba (Qwen), Zhipu AI (GLM), Moonshot AI (Kimi), MiniMax, Cohere, Cloudflare Workers AI, AWS Bedrock, Azure OpenAI, Vertex AI, Ollama, and 30+ more.
+
+## Getting started
+
+1. Sign up at https://www.enlyai.com
+2. Get your API key from the dashboard
+3. Replace your OpenAI base URL with `https://www.enlyai.com/v1`
+4. Start calling any model with the same code
+
+### Python example
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-your-enlyai-api-key",
+    base_url="https://www.enlyai.com/v1"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+### cURL example
+
+```bash
+curl https://www.enlyai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-your-enlyai-api-key" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+## Pricing
+
+Pay-per-use with no markup on provider prices. Free tier available for new users with sign-up bonus quota. Daily check-in rewards provide ongoing free usage.
+
+## Use cases
+
+- **AI-powered coding**: Use with Cursor, Claude Code, or Windsurf for multi-model code assistance
+- **Chat applications**: Build chatbots with model switching capability via Cherry Studio, ChatBox, or NextChat
+- **Enterprise AI gateway**: Private deployment for data compliance in finance, healthcare, and government
+- **AI application development**: Rapid prototyping with unified API across all providers
+- **Cost optimization**: Compare model performance and pricing to find the best value
+
+## Links
+
+- Website: https://www.enlyai.com
+- Documentation: https://www.enlyai.com/docs
+- GitHub (open-source base): https://github.com/Calcium-Ion/new-api

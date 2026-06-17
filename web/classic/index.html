@@ -5,18 +5,105 @@
     <link rel="icon" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
-    <meta
-      name="description"
-      lang="zh"
-      content="统一的 AI 模型聚合与分发网关，支持将各类大语言模型跨格式转换为 OpenAI、Claude、Gemini 兼容接口，为个人与企业提供集中式模型管理与网关服务。"
-    />
-    <meta
-      name="description"
-      lang="en"
-      content="A unified AI model hub for aggregation & distribution. It supports cross-converting various LLMs into OpenAI-compatible, Claude-compatible, or Gemini-compatible formats. A centralized gateway for personal and enterprise model management."
-    />
+
+    <!-- Primary Meta Tags -->
+    <title>enlyai - 统一LLM API网关 | 一个Key调用100+大模型</title>
+    <meta name="description" content="enlyai是统一的AI大模型API聚合网关，支持GPT-5、Claude 4、Gemini 3、DeepSeek等100+模型。一个API Key调用所有模型，国内直连无需翻墙，支付宝微信支付，开源支持私有化部署。" />
+    <meta name="keywords" content="LLM API,API聚合,ChatGPT API,Claude API,GPT-5,大模型网关,OpenAI替代,DeepSeek API,AI编程,Cursor API,统一API" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.enlyai.com/" />
+    <meta property="og:title" content="enlyai - 统一LLM API网关 | 一个Key调用100+大模型" />
+    <meta property="og:description" content="统一的AI大模型API聚合网关，支持GPT-5、Claude 4、Gemini 3、DeepSeek等100+模型。一个API Key调用所有模型，国内直连，开源支持私有化部署。" />
+    <meta property="og:image" content="https://www.enlyai.com/logo.png" />
+    <meta property="og:site_name" content="enlyai" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="enlyai - 统一LLM API网关 | 一个Key调用100+大模型" />
+    <meta name="twitter:description" content="统一的AI大模型API聚合网关，一个API Key调用100+大模型，国内直连无需翻墙。" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://www.enlyai.com/" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "enlyai",
+      "url": "https://www.enlyai.com",
+      "description": "统一的AI大模型API聚合网关，支持GPT-5、Claude 4、Gemini 3、DeepSeek等100+模型。一个API Key调用所有模型，国内直连无需翻墙，开源支持私有化部署。",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web",
+      "offers": [
+        {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free tier with sign-up bonus quota"
+        }
+      ],
+      "featureList": [
+        "Unified OpenAI-compatible API for 100+ LLMs",
+        "Smart routing and automatic failover",
+        "China-friendly: direct access without VPN",
+        "Alipay and WeChat payment support",
+        "Open-source self-hosting capability",
+        "Compatible with Cursor, Cherry Studio, Claude Code"
+      ],
+      "provider": {
+        "@type": "Organization",
+        "name": "enlyai",
+        "url": "https://www.enlyai.com"
+      }
+    }
+    </script>
+
+    <!-- FAQ Structured Data for LLM Citation -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "什么是enlyai？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "enlyai是一个统一的LLM API聚合网关，将OpenAI、Anthropic、Google、DeepSeek等50+提供商的100+大语言模型整合到一个OpenAI兼容的API接口中。开发者使用一个API Key即可调用所有模型，支持自动故障转移、负载均衡和统一计费。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "enlyai和OpenRouter有什么区别？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "enlyai面向国内开发者优化：支持国内直连无需翻墙、支付宝和微信支付、中文界面。同时基于New API开源项目，支持私有化部署，适合对数据合规有要求的企业。OpenRouter模型覆盖更广但不支持国内直连和私有化部署。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "如何使用enlyai调用GPT-5或Claude API？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "1. 在enlyai.com注册账号；2. 在控制台获取API Key；3. 将代码中的OpenAI base URL替换为https://www.enlyai.com/v1；4. 使用相同的OpenAI SDK代码，只需修改model参数即可切换不同模型。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "enlyai支持哪些AI工具和客户端？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "enlyai兼容所有使用OpenAI API格式的工具，包括Cursor、Cherry Studio、Claude Code、ChatBox、NextChat、Dify、FastGPT、LobeChat等。只需将API地址和Key替换为enlyai的即可。"
+          }
+        }
+      ]
+    }
+    </script>
+
     <meta name="generator" content="new-api" />
-    <title>New API</title>
     <!--umami-->
     <!--Google Analytics-->
   </head>
